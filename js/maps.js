@@ -6,341 +6,282 @@
 // Global map variables
 let displacementMap;
 let returneesMap;
+let proportionMap;
+let borderPointsMap;
+
 let stateGeoJSON;
 let displacementData;
 let returneeData;
+let borderPointsData;
+
+// Store all map instances for reference
+const mapInstances = {};
 
 /**
- * Initialize maps when data is loaded
+ * Initialize all maps when data is loaded
  */
-function initMaps(admin1Data, displacementStats, returneeStats) {
+function initMaps(admin1Data, displacementStats, returneeStats, borderPoints) {
     stateGeoJSON = admin1Data;
     displacementData = displacementStats;
     returneeData = returneeStats;
-    
-    // Initialize displacement map
+    borderPointsData = borderPoints;
+
+    // Initialize maps
     initDisplacementMap();
-    
-    // Initialize returnees map
     initReturneesMap();
-    
-    // Initialize displacement proportion map
     initDisplacementProportionMap();
+    initBorderPointsMap();
 }
 
-/**
- * Initialize the IDP distribution map
- */
-function initDisplacementMap() {
-    // Create map if container exists
-    const mapContainer = document.getElementById('displacement-map');
+/* ------------------------------------------------------------------
+   BORDER POINTS MAP
+-------------------------------------------------------------------*/
+function initBorderPointsMap() {
+    const mapContainer = document.getElementById('border-points-map');
     if (!mapContainer) return;
-    
-    // Initialize Leaflet map
-    displacementMap = L.map('displacement-map', {
-        center: [15.5, 30.5], // Sudan center coordinates
+
+    borderPointsMap = L.map('border-points-map', {
+        center: [15.5, 30.5], // Sudan center
         zoom: 6,
         minZoom: 5,
         maxZoom: 10,
         zoomControl: true
     });
-    
-    // Add base map layer
+
+    // Basemap
     L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OSM</a> | © <a href="https://carto.com/">CARTO</a>',
+        subdomains: 'abcd',
+        maxZoom: 20
+    }).addTo(borderPointsMap);
+
+    // Layers + UI
+    addBorderPointsLayer(borderPointsMap);
+    addSearchControl(borderPointsMap);
+    addBorderPointsLegend(borderPointsMap);
+
+    mapInstances.borderPoints = borderPointsMap;
+}
+
+function addBorderPointsLayer(map) {
+    if (!borderPointsData || borderPointsData.length === 0) return;
+
+    const countryColors = {
+        'Chad': '#e74c3c',
+        'Ethiopia': '#3498db',
+        'Eritrea': '#2ecc71',
+        'Egypt': '#f39c12'
+    };
+
+    const borderPointsLayer = L.featureGroup().addTo(map);
+
+    borderPointsData.forEach(point => {
+        const color = countryColors[point['Neighbouring Country']] || '#999';
+
+        const borderIcon = L.divIcon({
+            className: 'border-point-icon',
+            html: `<div style="width:12px;height:12px;border-radius:50%;background-color:${color};"></div>`,
+            iconSize: [12, 12],
+            iconAnchor: [6, 6]
+        });
+
+        const marker = L.marker([point.Y, point.X], {
+            icon: borderIcon,
+            title: point['Cross border location']
+        }).addTo(borderPointsLayer);
+
+        marker.bindPopup(`
+            <div class="border-point-popup">
+                <h4>${point['Cross border location']}</h4>
+                <div class="popup-grid">
+                    <div><b>State:</b> ${point.State} (${point['State Code']})</div>
+                    <div><b>Locality:</b> ${point.Locality} (${point['Locality Code']})</div>
+                    <div><b>Neighboring Country:</b> ${point['Neighbouring Country']}</div>
+                    <div><b>Coordinates:</b> ${point.Y.toFixed(4)}, ${point.X.toFixed(4)}</div>
+                </div>
+            </div>
+        `);
+
+        marker.on('mouseover', function () { this.openPopup(); });
+    });
+
+    map.fitBounds(borderPointsLayer.getBounds());
+    return borderPointsLayer;
+}
+
+function addBorderPointsLegend(map) {
+    const legend = L.control({ position: 'bottomright' });
+
+    legend.onAdd = function () {
+        const div = L.DomUtil.create('div', 'info legend');
+        const countryColors = {
+            'Chad': '#e74c3c',
+            'Ethiopia': '#3498db',
+            'Eritrea': '#2ecc71',
+            'Egypt': '#f39c12'
+        };
+
+        div.innerHTML = '<h4>Border Countries</h4>';
+        Object.entries(countryColors).forEach(([country, color]) => {
+            div.innerHTML += `
+                <div class="legend-item">
+                    <i style="background:${color}"></i> ${country}
+                </div>
+            `;
+        });
+
+        return div;
+    };
+
+    legend.addTo(map);
+}
+
+/* ------------------------------------------------------------------
+   DISPLACEMENT MAP (IDPs)
+-------------------------------------------------------------------*/
+function initDisplacementMap() {
+    const mapContainer = document.getElementById('displacement-map');
+    if (!mapContainer) return;
+
+    displacementMap = L.map('displacement-map', {
+        center: [15.5, 30.5],
+        zoom: 6,
+        minZoom: 5,
+        maxZoom: 10,
+        zoomControl: true
+    });
+
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
+        attribution: '&copy; OSM | © CARTO',
         subdomains: 'abcd',
         maxZoom: 20
     }).addTo(displacementMap);
-    
-    // Add state boundaries with IDP data
+
     addStateLayerWithData(displacementMap, stateGeoJSON, displacementData, 'idps');
-    
-    // Add search control
     addSearchControl(displacementMap);
-    
-    // Add legend
     addDisplacementLegend(displacementMap);
-    
-    // Store map instance
+
     mapInstances.displacement = displacementMap;
 }
 
-/**
- * Initialize the returnees map
- */
+/* ------------------------------------------------------------------
+   RETURNEES MAP
+-------------------------------------------------------------------*/
 function initReturneesMap() {
-    // Create map if container exists
     const mapContainer = document.getElementById('returnees-map');
     if (!mapContainer) return;
-    
-    // Initialize Leaflet map
+
     returneesMap = L.map('returnees-map', {
-        center: [15.5, 30.5], // Sudan center coordinates
+        center: [15.5, 30.5],
         zoom: 6,
         minZoom: 5,
         maxZoom: 10,
         zoomControl: true
     });
-    
-    // Add base map layer
+
     L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+        attribution: '&copy; OSM | © CARTO',
         subdomains: 'abcd',
         maxZoom: 20
     }).addTo(returneesMap);
-    
-    // Add state boundaries with returnee data
+
     addStateLayerWithData(returneesMap, stateGeoJSON, returneeData, 'returnees');
-    
-    // Add search control
     addSearchControl(returneesMap);
-    
-    // Add legend
     addReturneeMapLegend(returneesMap);
-    
-    // Store map instance
+
     mapInstances.returnees = returneesMap;
 }
 
-/**
- * Initialize the displacement proportion map
- */
+/* ------------------------------------------------------------------
+   PROPORTION MAP
+-------------------------------------------------------------------*/
 function initDisplacementProportionMap() {
-    // Create map if container exists
     const mapContainer = document.getElementById('proportion-map');
     if (!mapContainer) return;
-    
-    // Initialize Leaflet map
+
     proportionMap = L.map('proportion-map', {
-        center: [15.5, 30.5], // Sudan center coordinates
+        center: [15.5, 30.5],
         zoom: 6,
         minZoom: 5,
         maxZoom: 10,
         zoomControl: true
     });
-    
-    // Add base map layer
+
     L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+        attribution: '&copy; OSM | © CARTO',
         subdomains: 'abcd',
         maxZoom: 20
     }).addTo(proportionMap);
-    
-    // Add state boundaries with proportion data
+
     addProportionLayer(proportionMap, stateGeoJSON, displacementData);
-    
-    // Add search control
     addSearchControl(proportionMap);
-    
-    // Add legend
     addProportionLegend(proportionMap);
-    
-    // Store map instance
+
     mapInstances.proportion = proportionMap;
 }
 
-/**
- * Add state layer with data visualization
- */
+/* ------------------------------------------------------------------
+   GENERIC HELPERS
+-------------------------------------------------------------------*/
 function addStateLayerWithData(map, geoJSON, data, dataType) {
-    // Create a GeoJSON layer with custom styling based on data
-    const stateLayer = L.geoJSON(geoJSON, {
-        style: function(feature) {
-            const stateName = feature.properties.name;
-            const stateData = data.find(d => d.state === stateName);
+    return L.geoJSON(geoJSON, {
+        style: feature => {
+            const stateData = data.find(d => d.state === feature.properties.name);
             const value = stateData ? parseInt(stateData.value.replace(/,/g, '')) : 0;
-            
             return {
                 fillColor: getColorByValue(value, dataType),
                 weight: 1,
                 opacity: 1,
                 color: '#666',
-                dashArray: '',
                 fillOpacity: 0.7
             };
         },
-        onEachFeature: function(feature, layer) {
-            const stateName = feature.properties.name;
-            const stateData = data.find(d => d.state === stateName);
+        onEachFeature: (feature, layer) => {
+            const stateData = data.find(d => d.state === feature.properties.name);
             const value = stateData ? stateData.value : 'No data';
             const percentage = stateData ? stateData.percentage : 'N/A';
-            
-            // Add popup
+
             layer.bindPopup(`
                 <div class="map-popup">
-                    <h3>${stateName}</h3>
-                    <p><strong>${dataType === 'idps' ? 'IDPs' : 'Returnees'}:</strong> ${value}</p>
-                    <p><strong>Percentage of Population:</strong> ${percentage}</p>
+                    <h3>${feature.properties.name}</h3>
+                    <p><b>${dataType === 'idps' ? 'IDPs' : 'Returnees'}:</b> ${value}</p>
+                    <p><b>Percentage of Population:</b> ${percentage}</p>
                 </div>
             `);
-            
-            // Add hover effect
+
             layer.on({
-                mouseover: function(e) {
-                    const layer = e.target;
-                    layer.setStyle({
-                        weight: 3,
-                        color: '#666',
-                        dashArray: '',
-                        fillOpacity: 0.9
-                    });
-                    layer.bringToFront();
+                mouseover: e => {
+                    e.target.setStyle({ weight: 3, fillOpacity: 0.9 });
+                    e.target.bringToFront();
                 },
-                mouseout: function(e) {
-                    stateLayer.resetStyle(e.target);
-                },
-                click: function(e) {
-                    map.fitBounds(e.target.getBounds());
-                }
+                mouseout: e => e.target.setStyle({ weight: 1, fillOpacity: 0.7 }),
+                click: e => map.fitBounds(e.target.getBounds())
             });
         }
     }).addTo(map);
-    
-    return stateLayer;
 }
 
-/**
- * Add proportion layer with pie charts
- */
-function addProportionLayer(map, geoJSON, data) {
-    // Create a GeoJSON layer for state boundaries
-    const stateLayer = L.geoJSON(geoJSON, {
-        style: function(feature) {
-            return {
-                fillColor: 'transparent',
-                weight: 1,
-                opacity: 1,
-                color: '#666',
-                dashArray: '',
-                fillOpacity: 0
-            };
-        }
-    }).addTo(map);
-    
-    // Add pie charts for each state
-    geoJSON.features.forEach(feature => {
-        const stateName = feature.properties.name;
-        const stateData = data.find(d => d.state === stateName);
-        
-        if (stateData) {
-            const center = getCenterOfPolygon(feature.geometry);
-            const displaced = parseInt(stateData.value.replace(/,/g, ''));
-            const total = parseInt(stateData.total_population.replace(/,/g, ''));
-            const remaining = total - displaced;
-            
-            // Create pie chart marker
-            const pieChartMarker = L.pieChartMarker(
-                [center[1], center[0]],
-                {
-                    data: [
-                        {
-                            name: 'Displaced',
-                            value: displaced,
-                            style: {
-                                fillColor: '#FF6B6B',
-                                fillOpacity: 0.8,
-                                stroke: true,
-                                color: '#fff',
-                                weight: 1
-                            }
-                        },
-                        {
-                            name: 'Remaining',
-                            value: remaining,
-                            style: {
-                                fillColor: '#4ECDC4',
-                                fillOpacity: 0.8,
-                                stroke: true,
-                                color: '#fff',
-                                weight: 1
-                            }
-                        }
-                    ],
-                    radius: getRadiusByPopulation(total),
-                    attribution: stateName
-                }
-            ).addTo(map);
-            
-            // Add popup
-            pieChartMarker.bindPopup(`
-                <div class="map-popup">
-                    <h3>${stateName}</h3>
-                    <p><strong>Displaced Population:</strong> ${stateData.value} (${stateData.percentage})</p>
-                    <p><strong>Remaining Population:</strong> ${remaining.toLocaleString()}</p>
-                    <p><strong>Total Population:</strong> ${stateData.total_population}</p>
-                </div>
-            `);
-        }
-    });
-}
-
-/**
- * Get center coordinates of a polygon
- */
-function getCenterOfPolygon(geometry) {
-    if (geometry.type === 'Polygon') {
-        const coordinates = geometry.coordinates[0];
-        let x = 0;
-        let y = 0;
-        
-        for (let i = 0; i < coordinates.length; i++) {
-            x += coordinates[i][0];
-            y += coordinates[i][1];
-        }
-        
-        return [x / coordinates.length, y / coordinates.length];
-    } else if (geometry.type === 'MultiPolygon') {
-        // Use the first polygon for simplicity
-        return getCenterOfPolygon({type: 'Polygon', coordinates: geometry.coordinates[0]});
-    }
-    
-    return [0, 0];
-}
-
-/**
- * Get radius size based on population
- */
-function getRadiusByPopulation(population) {
-    // Scale radius based on population
-    const minRadius = 20;
-    const maxRadius = 60;
-    const minPop = 100000;
-    const maxPop = 5000000;
-    
-    if (population <= minPop) return minRadius;
-    if (population >= maxPop) return maxRadius;
-    
-    const scale = (population - minPop) / (maxPop - minPop);
-    return minRadius + scale * (maxRadius - minRadius);
-}
-
-/**
- * Get color based on value and data type
- */
-function getColorByValue(value, dataType) {
-    // Different color scales for different data types
-    if (dataType === 'idps') {
-        if (value > 1000000) return '#2A81CB';
-        if (value > 500000) return '#5DA2D5';
-        if (value > 100000) return '#90C3DF';
-        if (value > 50000) return '#C5E4EA';
+/* --- Color Scaling --- */
+function getColorByValue(value, type) {
+    if (type === 'idps') {
+        if (value > 1_000_000) return '#2A81CB';
+        if (value > 500_000) return '#5DA2D5';
+        if (value > 100_000) return '#90C3DF';
+        if (value > 50_000) return '#C5E4EA';
         return '#EFF9FB';
-    } else if (dataType === 'returnees') {
-        if (value > 300000) return '#5CB85C';
-        if (value > 100000) return '#7EC97E';
-        if (value > 50000) return '#A1DAA1';
-        if (value > 10000) return '#C4EBC4';
+    }
+    if (type === 'returnees') {
+        if (value > 300_000) return '#5CB85C';
+        if (value > 100_000) return '#7EC97E';
+        if (value > 50_000) return '#A1DAA1';
+        if (value > 10_000) return '#C4EBC4';
         return '#E7F7E7';
     }
-    
-    return '#CCCCCC';
+    return '#CCC';
 }
 
-/**
- * Add search control to map
- */
+/* --- Legends & Controls --- */
 function addSearchControl(map) {
-    // Create search control
     const searchControl = L.control.search({
         position: 'topright',
         layer: L.layerGroup(),
@@ -348,100 +289,52 @@ function addSearchControl(map) {
         zoom: 7,
         marker: false
     });
-    
-    // Add search control to map
     map.addControl(searchControl);
 }
 
-/**
- * Add displacement legend to map
- */
 function addDisplacementLegend(map) {
-    const legend = L.control({position: 'bottomright'});
-    
-    legend.onAdd = function(map) {
+    const legend = L.control({ position: 'bottomright' });
+    legend.onAdd = () => {
         const div = L.DomUtil.create('div', 'info legend');
-        const grades = [0, 50000, 100000, 500000, 1000000];
-        const labels = [];
-        
+        const grades = [0, 50_000, 100_000, 500_000, 1_000_000];
         div.innerHTML = '<h4>IDPs by State</h4>';
-        
         for (let i = 0; i < grades.length; i++) {
             div.innerHTML +=
-                '<i style="background:' + getColorByValue(grades[i], 'idps') + '"></i> ' +
-                (grades[i] ? formatNumber(grades[i]) : '0') +
-                (grades[i + 1] ? '&ndash;' + formatNumber(grades[i + 1]) + '<br>' : '+');
+                `<i style="background:${getColorByValue(grades[i], 'idps')}"></i> ${formatNumber(grades[i])}` +
+                (grades[i + 1] ? `–${formatNumber(grades[i + 1])}<br>` : '+');
         }
-        
         return div;
     };
-    
     legend.addTo(map);
 }
 
-/**
- * Add returnee map legend
- */
 function addReturneeMapLegend(map) {
-    const legend = L.control({position: 'bottomright'});
-    
-    legend.onAdd = function(map) {
+    const legend = L.control({ position: 'bottomright' });
+    legend.onAdd = () => {
         const div = L.DomUtil.create('div', 'info legend');
-        const grades = [0, 10000, 50000, 100000, 300000];
-        const labels = [];
-        
+        const grades = [0, 10_000, 50_000, 100_000, 300_000];
         div.innerHTML = '<h4>Returnees by State</h4>';
-        
         for (let i = 0; i < grades.length; i++) {
             div.innerHTML +=
-                '<i style="background:' + getColorByValue(grades[i], 'returnees') + '"></i> ' +
-                (grades[i] ? formatNumber(grades[i]) : '0') +
-                (grades[i + 1] ? '&ndash;' + formatNumber(grades[i + 1]) + '<br>' : '+');
+                `<i style="background:${getColorByValue(grades[i], 'returnees')}"></i> ${formatNumber(grades[i])}` +
+                (grades[i + 1] ? `–${formatNumber(grades[i + 1])}<br>` : '+');
         }
-        
         return div;
     };
-    
     legend.addTo(map);
 }
 
-/**
- * Add proportion legend
- */
 function addProportionLegend(map) {
-    const legend = L.control({position: 'bottomright'});
-    
-    legend.onAdd = function(map) {
-        const div = L.DomUtil.create('div', 'info legend');
-        
-        div.innerHTML = `
+    const legend = L.control({ position: 'bottomright' });
+    legend.onAdd = () => `
+        <div class="info legend">
             <h4>Displacement Proportion</h4>
-            <div class="legend-item">
-                <i style="background:#FF6B6B"></i> Displaced Population
-            </div>
-            <div class="legend-item">
-                <i style="background:#4ECDC4"></i> Remaining Population
-            </div>
-            <div class="legend-item">
-                <div class="circle-size small"></div> < 500,000 people
-            </div>
-            <div class="legend-item">
-                <div class="circle-size medium"></div> 500,000 - 2,000,000 people
-            </div>
-            <div class="legend-item">
-                <div class="circle-size large"></div> > 2,000,000 people
-            </div>
-        `;
-        
-        return div;
-    };
-    
+            <div><i style="background:#FF6B6B"></i> Displaced</div>
+            <div><i style="background:#4ECDC4"></i> Remaining</div>
+        </div>`;
     legend.addTo(map);
 }
 
-/**
- * Format number with commas
- */
 function formatNumber(num) {
     return num.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 }
