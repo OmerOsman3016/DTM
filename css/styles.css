@@ -2,7 +2,66 @@
  * Sudan DTM Integrated Dashboard
  * Main Stylesheet
  */
+/* Border points map specific styles */
+.border-point-icon div {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    border: 2px solid white;
+    box-shadow: 0 0 5px rgba(0,0,0,0.3);
+}
 
+.border-point-popup {
+    font-family: Arial, sans-serif;
+    min-width: 200px;
+}
+
+.popup-grid {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: 5px 10px;
+}
+
+.popup-row {
+    display: contents;
+}
+
+.popup-label {
+    font-weight: bold;
+    color: #555;
+}
+
+.popup-value {
+    color: #333;
+}
+
+/* Legend styles */
+.info.legend {
+    background: white;
+    padding: 10px;
+    border-radius: 5px;
+    box-shadow: 0 1px 5px rgba(0,0,0,0.2);
+}
+
+.legend h4 {
+    margin: 0 0 8px;
+    font-size: 14px;
+}
+
+.legend-item {
+    display: flex;
+    align-items: center;
+    margin-bottom: 3px;
+}
+
+.legend-item i {
+    width: 12px;
+    height: 12px;
+    margin-right: 8px;
+    display: inline-block;
+    border-radius: 50%;
+    border: 1px solid #fff;
+}
 /* Base Styles */
 :root {
   --primary-blue: #418FDE;
